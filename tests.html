@@ -75,10 +75,12 @@
 				Re-initialise attr events
 			</button>
 			<br />
-			<a href="{linkTo}" data-cabin-event="Leaving index event"
-				>Link with cabin-data-event</a
+			<a href="{linkTo}" data-cabin-event="Leaving {linkTo} event"
+				><p>Link with cabin-data-event</p></a
 			>
 			<br />
+			<a href="https://example.com" class="btn btn-primary" data-cabin-event="Leaving to example.com"><p><span>Leaving to example.com (with inner tags)</span></p></a>
+			<br/>
 			<button
 				data-cabin-event="Result: https://my-awesome-website.com/"
 			>
@@ -108,7 +110,7 @@
 				'50%_discount' campaign via instagram </a
 			><br />
 		</p>
-		<script async defer src="/hello.js?host=mulhoon.local:8080"></script>
+		<script async defer src="/hello.js?host=ping.withcabin.com"></script>
 		<script>
 			let link = document.getElementById('hello')
 			link.addEventListener('click', (e) => console.log('first event'))

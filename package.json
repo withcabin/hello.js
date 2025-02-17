@@ -1,26 +1,27 @@
 {
-  "name": "cabin-script",
-  "version": "0.5.9",
-  "description": "Client script for cabin analytics",
-  "main": "hello.js",
-  "scripts": {
-    "dev": "nodemon server.js",
-    "start": "node server",
-    "min": "terser hello.js --compress --comments /^!/ --mangle --ie8 --safari10 --ecma 5 --toplevel --warn --output dist/hello.js",
-    "size": "echo 'Bytes:' && gzip -c dist/hello.js | wc -c",
-    "deploy": "aws s3 sync ./dist s3://scripts.withcabin.com --delete && yarn invalidate",
-    "deploy-gcp": "gsutil cp -z js ./dist/hello.js gs://cabin-script/hello.js",
-    "invalidate-gcp": "gcloud compute url-maps invalidate-cdn-cache cabin-static-loadbalancer --path '/hello.js'",
-    "invalidate": "aws lambda invoke --function-name cabin-invalidateScript --region=eu-west-1 output"
-  },
-  "repository": "https://github.com/Normally/cabin-script",
-  "author": "Nic Mulvaney",
-  "license": "MIT",
-  "devDependencies": {
-    "express": "^4.17.1",
-    "terser": "^4.4.2"
-  },
-  "dependencies": {
-    "nodemon": "^2.0.4"
-  }
+	"name": "cabin-script",
+	"version": "0.5.10",
+	"description": "Client script for cabin analytics",
+	"main": "hello.js",
+	"scripts": {
+		"dev": "nodemon server.js",
+		"start": "node server",
+		"min": "terser hello.js --compress --comments /^!/ --mangle --ie8 --safari10 --ecma 5 --toplevel --warn --output dist/hello.js",
+		"size": "echo 'Bytes:' && gzip -c dist/hello.js | wc -c",
+		"deploy": "aws s3 sync ./dist s3://scripts.withcabin.com --delete && yarn invalidate",
+		"deploy-gcp": "gsutil cp -z js ./dist/hello.js gs://cabin-script/hello.js",
+		"invalidate-gcp": "gcloud compute url-maps invalidate-cdn-cache cabin-static-loadbalancer --path '/hello.js'",
+		"invalidate": "aws lambda invoke --function-name cabin-invalidateScript --region=eu-west-1 output"
+	},
+	"repository": "https://github.com/Normally/cabin-script",
+	"author": "Nic Mulvaney",
+	"license": "MIT",
+	"devDependencies": {
+		"express": "^4.17.1",
+		"terser": "^4.4.2"
+	},
+	"dependencies": {
+		"nodemon": "^2.0.4"
+	},
+	"packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

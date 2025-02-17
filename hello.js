@@ -1,4 +1,4 @@
-/*! withcabin.com 0.5.9 */
+/*! withcabin.com 0.5.10 */
 
 ;(async function (window, document, host) {
 	// Use a custom domain or not
@@ -136,8 +136,8 @@
 
 	let _pushState = function (type) {
 		let original = history[type]
-		return function () {
-			let r = original.apply(this, arguments),
+		return function (...args) {
+			let r = original.apply(this, args),
 				e
 			if (typeof Event == 'function') {
 				e = new Event(type)
@@ -145,7 +145,7 @@
 				e = doc.createEvent('Event')
 				e.initEvent(type, true, true)
 			}
-			e.arguments = arguments
+			e.args = args
 			window.dispatchEvent(e)
 			return r
 		}
@@ -157,7 +157,10 @@
 		pageview()
 	})
 
-	let listener = e => cabin.event(e.target.getAttribute(dce))
+	let listener = e => {
+		const target = e.target.closest('[' + dce + ']')
+		target && cabin.event(target.getAttribute(dce))
+	}
 
 	// add global object for capturing events
 	window.cabin = {
