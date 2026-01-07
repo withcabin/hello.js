@@ -1,0 +1,18 @@
+{
+	"compress": {
+		"passes": 2,
+		"pure_getters": true,
+		"unsafe": true,
+		"unsafe_comps": true,
+		"drop_console": false
+	},
+	"mangle": {
+		"properties": {
+			"regex": "^_"
+		}
+	},
+	"format": {
+		"comments": false,
+		"preamble": "/*! withcabin.com 0.6.0 */"
+	}
+}

@@ -1,0 +1,11 @@
+{
+	"compilerOptions": {
+		"target": "ES2017",
+		"lib": ["ES2017", "DOM"],
+		"module": "ES2015",
+		"strict": true,
+		"outDir": "dist",
+		"removeComments": true
+	},
+	"include": ["hello.ts", "hello.d.ts"]
+}
