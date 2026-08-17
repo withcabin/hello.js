@@ -2,7 +2,7 @@
 
 ### Critical Fixes
 
-- **Weak bot detection** - Expanded regex to include headless browsers (`phantom`, `lighthouse`, `pagespeed`)
+- **Weak bot detection** - Expanded regex to include synthetic performance tools (`phantom`, `lighthouse`, `pagespeed`). `headless` was trialled and deliberately left out: agentic browsers run headless Chrome and are the only AI traffic this script can see, and the server already drops generic headless scrapers via `isbot()`.
 - **Deprecated `performance.timing`** - Replaced with Navigation Timing API Level 2 (`getEntriesByType('navigation')`)
 - **Undefined `doc` variable** - Fixed reference error in pushState handler
 - **Event listener leaks** - Replaced `initEvents()` with single event delegation pattern

@@ -36,12 +36,19 @@ interface Cabin {
 	const perf = window.performance
 	const screen = window.screen
 
-	// Kill requests from bots, spiders, and headless browsers
-	if (
-		/bot|spider|crawl|headless|phantom|lighthouse|pagespeed/i.test(
-			nav.userAgent
-		)
-	) {
+	// Kill requests from bots, spiders, and synthetic performance tools.
+	//
+	// `headless` is deliberately NOT in this list. Agentic browsers (ChatGPT
+	// Atlas, Operator, computer-use) run headless Chrome and DO execute this
+	// script, so they are the only AI traffic a client-side script can ever
+	// see — the high-volume crawlers (GPTBot, ClaudeBot, PerplexityBot, CCBot)
+	// never run JavaScript at all. Killing `headless` here would blind the
+	// dashboard's AI Agents section to the one category it can measure.
+	//
+	// Nothing is lost by omitting it: the server drops generic headless
+	// scrapers via isbot(), and classifies named AI agents via detectAiBot()
+	// which runs first. See cabin/lambdas/logVisits/modules/aiBots.js.
+	if (/bot|spider|crawl|phantom|lighthouse|pagespeed/i.test(nav.userAgent)) {
 		return
 	}
 
