@@ -23,6 +23,10 @@ A footer with a newsletter block and related posts is easily a quarter of the pa
 
 Pages shorter than the viewport, and sites that scroll an inner element rather than the window, report `sd: -1` rather than a fake 100%.
 
+### Dwell has no timer
+
+Time is credited to the band range that was on screen since the last measurement, and only then is the range recomputed. Scroll (rAF-throttled) and the send are the only triggers, so there is no polling interval, and elapsed time is attributed to where the visitor was rather than where they have just arrived. A hidden gap is discarded by resetting the clock on the way back.
+
 ### Delivery
 
 Duration now also sends on `pagehide` and on the first `visibilitychange` to hidden, not only `beforeunload`, which mobile Safari frequently never fires. All three share a `sent` guard that resets per pageview. The trade-off is that the first hide wins: tab away at 5s, return and read for 3 minutes, and the visit records 5s. Dropping the guard needs the ingest side to treat `(p, n)` as an upsert.
