@@ -1,18 +1,31 @@
 {
 	"compress": {
-		"passes": 2,
+		"passes": 5,
 		"pure_getters": true,
 		"unsafe": true,
 		"unsafe_comps": true,
-		"drop_console": false
+		"unsafe_arrows": true,
+		"unsafe_methods": true,
+		"unsafe_math": true,
+		"unsafe_undefined": true,
+		"unsafe_proto": true,
+		"unsafe_regexp": true,
+		"booleans_as_integers": true,
+		"hoist_funs": true,
+		"keep_fargs": false,
+		"toplevel": true,
+		"drop_console": false,
+		"ecma": 2017
 	},
 	"mangle": {
+		"toplevel": true,
 		"properties": {
 			"regex": "^_"
 		}
 	},
 	"format": {
 		"comments": false,
+		"ecma": 2017,
 		"preamble": "/*! withcabin.com 0.6.0 */"
 	}
 }

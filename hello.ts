@@ -65,7 +65,6 @@ interface Cabin {
 
 	const BANDS = 10 // the content block is split into deciles
 	const BAND_MS = 1000 // time a band must be on screen before it counts as read
-	const TICK_MS = 250 // how often dwell time is sampled
 
 	// How the content range was found, sent as `sm` so the dashboard knows how
 	// much to trust a page's depth and support can see why one looks odd.
@@ -88,7 +87,8 @@ interface Cabin {
 	let mode: number
 	let content: Element | null
 	let lastSample: number
-	let scrolled: boolean
+	let bandFrom: number
+	let bandTo: number
 	let interacted: boolean
 	let queued: boolean
 	let sent: boolean
@@ -122,7 +122,7 @@ interface Cabin {
 	}
 
 	const getLoadTime = (): number => {
-		if (perf?.getEntriesByType) {
+		if (perf && perf.getEntriesByType) {
 			const navEntry = perf.getEntriesByType('navigation')[0] as
 				| PerformanceNavigationTiming
 				| undefined
@@ -188,25 +188,39 @@ interface Cabin {
 		duration += now() - snapshot
 	}
 
-	const docHeight = (): number => {
-		const body = document.body
-		const html = document.documentElement
-		return Math.max(
-			body ? body.scrollHeight : 0,
-			body ? body.offsetHeight : 0,
-			html.scrollHeight,
-			html.offsetHeight
-		)
-	}
+	// scrollingElement is <body> in quirks mode and <html> everywhere else,
+	// which is the only difference the old four-way Math.max was papering over,
+	// and it cannot be null the way document.body can be mid-parse.
+	const docHeight = (): number =>
+		(document.scrollingElement || document.documentElement).scrollHeight
 
-	// The slice of the page that counts as content. Headers barely matter, they
-	// sit at depth 0 where they hardly move the number, but footers do: a
-	// newsletter block and related posts can be a quarter of the document, so a
-	// full read of the article would report as 75% and no two pages would be
-	// comparable. Measured fresh every sample because lazy images grow the box.
-	const contentRange = (): number[] => {
+	// Dwell is credited to the range that was on screen since the last
+	// measurement, and only then is the range recomputed. That is exact without
+	// a timer: the visible range changes when the page scrolls or reflows, so
+	// measuring on scroll and once more at send time covers every state, and it
+	// attributes the elapsed time to where the visitor actually was rather than
+	// to where they have just arrived.
+	//
+	// Reached depth only ever rises, so scrolling back up never lowers it. Dwell
+	// is the opposite: a band re-entered collects more time and is more likely to
+	// qualify as read. Together they separate a reader from someone who flicked
+	// to the bottom, which neither number does on its own.
+	const measure = (): void => {
+		const t = now()
+		for (let i = bandFrom; i < bandTo; i++) {
+			bandTime[i] += t - lastSample
+		}
+		lastSample = t
+
 		const y = window.scrollY
+		let top = 0
+		let height = 0
 
+		// The slice of the page that counts as content. Headers barely matter,
+		// they sit at depth 0 where they hardly move the number, but footers do: a
+		// newsletter block and related posts can be a quarter of the document, so
+		// a full read of the article would report as 75% and no two pages would be
+		// comparable. Re-read every time because lazy images grow the box.
 		if (!content || !content.isConnected) {
 			// Two queries, not one combined selector: querySelector returns the
 			// first match in document order, so an <article> above the tagged
@@ -214,76 +228,51 @@ interface Cabin {
 			content = document.querySelector(`[${CONTENT_ATTR}]`)
 			mode = MODE_ATTR
 			if (!content) {
-				content = document.querySelector('article, main, [role=main]')
+				content = document.querySelector('article, main')
 				mode = MODE_MAIN
 			}
 		}
 
 		if (content) {
 			const box = content.getBoundingClientRect()
-			if (box.height > 0) return [box.top + y, box.height]
+			top = box.top + y
+			height = box.height
 		}
 
-		// No content element, or it is hidden. Trim at the footer if there is
-		// one, which recovers most of the accuracy for a single extra query.
-		const height = docHeight()
-		const foot = document.querySelector('footer')
-		const end = foot ? foot.getBoundingClientRect().top + y : 0
-
-		if (end > 0 && end < height) {
-			mode = MODE_FOOT
-			return [0, end]
+		// No content element, or it is hidden. Trim at the footer if there is one,
+		// which recovers most of the accuracy for a single extra query.
+		if (!height) {
+			const foot = document.querySelector('footer')
+			const cut = foot ? foot.getBoundingClientRect().top + y : 0
+			height = docHeight()
+			mode = MODE_DOC
+			if (cut > 0 && cut < height) {
+				height = cut
+				mode = MODE_FOOT
+			}
 		}
 
-		mode = MODE_DOC
-		return [0, height]
-	}
-
-	// Reached depth only ever rises, so scrolling back up never lowers it.
-	// Dwell is the opposite: a band re-entered collects more time and is more
-	// likely to qualify as read. Together they separate a reader from someone
-	// who flicked to the bottom, which neither number does on its own.
-	const sample = (): void => {
-		const t = now()
-		// Background tabs throttle timers to once a minute, so cap what a late
-		// tick can contribute rather than dumping the whole gap into a band.
-		const elapsed = Math.min(t - lastSample, TICK_MS * 2)
-		lastSample = t
-
-		if (document.hidden) return
-
-		const range = contentRange()
-		const top = range[0]
-		const height = range[1]
-		if (height <= 0) return
-
-		const y = window.scrollY
-		const start = (y - top) / height
-		// iOS Safari collapses its toolbar as you scroll, which makes
-		// innerHeight grow mid-scroll and can push this past 1.
+		// iOS Safari collapses its toolbar as you scroll, which makes innerHeight
+		// grow mid-scroll and can push this past 1.
 		const end = Math.min(1, (y + window.innerHeight - top) / height)
-
 		if (end > maxDepth) maxDepth = end
 
-		const from = Math.max(0, Math.floor(start * BANDS))
-		const to = Math.min(BANDS, Math.ceil(end * BANDS))
-		for (let i = from; i < to; i++) {
-			bandTime[i] += elapsed
-		}
+		bandFrom = Math.max(0, Math.floor(((y - top) / height) * BANDS))
+		bandTo = Math.ceil(end * BANDS)
 	}
 
 	const scrollData = (): ScrollData => {
-		sample()
+		measure()
 
 		let bits = 0
 		for (let i = 0; i < BANDS; i++) {
 			if (bandTime[i] >= BAND_MS) bits |= 1 << i
 		}
 
-		// Nothing scrolled and nothing could: a page shorter than the viewport,
-		// or a site that scrolls an inner element instead of the window. Report
-		// that as unmeasured rather than as a perfect read.
-		const measured = scrolled || docHeight() > window.innerHeight + 4
+		// Nothing could scroll: a page shorter than the viewport, or a site that
+		// scrolls an inner element rather than the window. Report that as
+		// unmeasured rather than as a perfect read.
+		const measured = docHeight() > window.innerHeight + 4
 
 		return {
 			sd: measured ? Math.round(maxDepth * 100) : -1,
@@ -310,7 +299,8 @@ interface Cabin {
 		mode = MODE_NONE
 		content = null
 		lastSample = startTime
-		scrolled = false
+		bandFrom = 0
+		bandTo = 0
 		interacted = false
 		sent = false
 
@@ -383,24 +373,22 @@ interface Cabin {
 			addDuration()
 			sendDuration()
 		} else {
-			snapshot = now()
+			snapshot = lastSample = now()
 		}
 	})
 
-	// The interval gives dwell its clock. The scroll handler only flags that a
-	// scroll happened and asks for an extra sample, so a fast scroll that
-	// starts and ends inside one tick still registers its depth.
 	window.addEventListener(
 		'scroll',
 		() => {
-			scrolled = true
 			interacted = true
 
+			// One measurement per frame at most: any more would be reading
+			// layout faster than the browser can paint it.
 			if (!queued) {
 				queued = true
 				requestAnimationFrame(() => {
 					queued = false
-					sample()
+					measure()
 				})
 			}
 		},
@@ -410,8 +398,6 @@ interface Cabin {
 	window.addEventListener('keydown', () => (interacted = true), {
 		passive: true,
 	})
-
-	setInterval(sample, TICK_MS)
 
 	// Belt and braces. All three paths run through the same guard, so whichever
 	// the browser honours first wins and the rest are no-ops.
@@ -437,7 +423,8 @@ interface Cabin {
 	document.addEventListener('click', (e: MouseEvent) => {
 		interacted = true
 
-		const target = (e.target as Element)?.closest(`[${DATA_EVENT_ATTR}]`)
+		const el = e.target as Element | null
+		const target = el && el.closest(`[${DATA_EVENT_ATTR}]`)
 		if (target) {
 			const eventName = target.getAttribute(DATA_EVENT_ATTR)
 			if (eventName) {
@@ -458,7 +445,7 @@ interface Cabin {
 				n: startTime,
 			})
 
-			callback?.()
+			if (callback) callback()
 		},
 
 		blockMe(block: boolean): void {
