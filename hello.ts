@@ -115,7 +115,7 @@ interface Cabin {
 		const blocked = storage.get(STORAGE_KEY) === '1'
 		if (blocked && logMessage) {
 			console.log(
-				`Cabin is blocked on ${loc.hostname} - Use cabin.blockMe(false) to unblock`
+				`Cabin is blocked on ${loc.hostname}. cabin.blockMe(false) to unblock`
 			)
 		}
 		return blocked
@@ -450,9 +450,9 @@ interface Cabin {
 
 		blockMe(block: boolean): void {
 			storage.set(STORAGE_KEY, block ? '1' : '0')
-			console.log(
-				`Cabin is now ${block ? 'blocked' : 'unblocked'} on ${loc.hostname}`
-			)
+			// Deliberately phrased to share as much text as possible with the
+			// message above: on a gzipped file, repetition is cheaper than brevity.
+			console.log(`Cabin is ${block ? '' : 'un'}blocked on ${loc.hostname}`)
 		},
 	}
 
