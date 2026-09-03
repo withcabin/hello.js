@@ -91,6 +91,7 @@ interface Cabin {
 	let scrolled: boolean
 	let interacted: boolean
 	let queued: boolean
+	let sent: boolean
 
 	// Safe localStorage access (handles private browsing)
 	const storage = {
@@ -311,6 +312,7 @@ interface Cabin {
 		lastSample = startTime
 		scrolled = false
 		interacted = false
+		sent = false
 
 		const hostname = loc.hostname
 		const pathname = loc.pathname
@@ -355,7 +357,8 @@ interface Cabin {
 	}
 
 	const sendDuration = (): void => {
-		if (window.disableCabin) return
+		if (window.disableCabin || sent) return
+		sent = true
 
 		if (!document.hidden) {
 			addDuration()
@@ -370,10 +373,19 @@ interface Cabin {
 		sendBeacon(`${baseUrl}/duration`, Object.assign(data, scrollData()))
 	}
 
-	// Track visibility changes for accurate duration
-	document.addEventListener('visibilitychange', () =>
-		document.hidden ? addDuration() : (snapshot = now())
-	)
+	// Track visibility changes for accurate duration, and treat the first hide
+	// as the last reliable chance to report. Mobile Safari frequently never
+	// fires beforeunload, so a reader who switches apps and never comes back
+	// used to be lost entirely, and they are exactly the engaged visit the
+	// scroll fields are there to describe.
+	document.addEventListener('visibilitychange', () => {
+		if (document.hidden) {
+			addDuration()
+			sendDuration()
+		} else {
+			snapshot = now()
+		}
+	})
 
 	// The interval gives dwell its clock. The scroll handler only flags that a
 	// scroll happened and asks for an extra sample, so a fast scroll that
@@ -401,7 +413,9 @@ interface Cabin {
 
 	setInterval(sample, TICK_MS)
 
-	// Send duration before page unload
+	// Belt and braces. All three paths run through the same guard, so whichever
+	// the browser honours first wins and the rest are no-ops.
+	window.addEventListener('pagehide', sendDuration)
 	window.addEventListener('beforeunload', sendDuration)
 
 	// Handle SPA navigation via pushState
