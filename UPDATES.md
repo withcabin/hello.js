@@ -1,6 +1,7 @@
-## Unreleased: scroll depth
+## Key Changes in v0.6.1: scroll depth
 
-Not versioned yet, since 0.6.0 has not reached the CDN. Decide the bump when it does.
+0.6.0 never reached the CDN, so this supersedes it and ships both sets of changes at once.
+The live file is still 0.5.10 (2,062 bytes, `last-modified` Feb 2025).
 
 ### New payload fields (on `/duration`, no new requests)
 
