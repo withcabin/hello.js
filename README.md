@@ -12,4 +12,17 @@ The script is accessible via CDN at https://scripts.withcabin.com/hello.js
 
 `yarn deploy` - deploy to CDN and invalidate cache
 
+## Measuring scroll depth
+
+Depth is measured against the page's content block, not the whole document, so a tall
+footer does not report a full read as 75%. The script looks for, in order:
+
+1. `[data-cabin-content]` - put this on the element wrapping your content to be explicit
+2. `<article>`, `<main>` or `[role=main]`
+3. the document, trimmed at `<footer>` if there is one
+4. the whole document
+
+Which one applied is sent as `sm` on the duration payload, so a page measured against the
+whole document can be treated as less trustworthy than one that was tagged.
+
 Note: This script is written with a tacit knowledge of terser compression and mangle. Some of the script may look unusual but it is written to be compressed as effectively as possible to reduce file size.
