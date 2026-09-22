@@ -250,9 +250,14 @@ interface Cabin {
 			// number in place of the honest -1 this is meant to replace. Only the
 			// computed style can tell the two apart. Elements arrive innermost
 			// first, so the pane is found before its ancestors.
+			//
+			// Matched on the first letter because the scrolling values are scroll,
+			// auto and overlay, against visible, hidden and clip. Current Chrome
+			// normalises `overlay` to `auto` so spelling out `auto|scroll` works
+			// today, but it did not always, and this costs the same bytes.
 			if (
 				el.scrollHeight > el.clientHeight + 4 &&
-				/auto|scroll/.test(getComputedStyle(el).overflowY) &&
+				/^[sao]/.test(getComputedStyle(el).overflowY) &&
 				bigEnough(el)
 			) {
 				scroller = el
