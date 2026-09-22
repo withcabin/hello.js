@@ -14,10 +14,6 @@ real visitor downloads.
 | Google Analytics (gtag)   | 242,913 | 89,838 |    88,697 |
 | Google Analytics (legacy) |  52,310 | 20,802 |         — |
 
-Plausible is smaller than Cabin and does less: no scroll depth, no carbon or energy
-measurement. Fathom and Simple Analytics are larger. Matomo is roughly fourteen times
-Cabin, and gtag is around forty-five.
-
 Legacy `analytics.js` serves no brotli, so gzip is its real number.
 
 ## Re-measuring
@@ -28,8 +24,3 @@ curl -s -A Mozilla -H 'Accept-Encoding: br' <url> | wc -c
 
 Swap `br` for `gzip` or `identity`. The `Accept-Encoding` header has to be explicit:
 curl sends none by default, so without it every row reads as raw.
-
-Badges were used here before and were quietly wrong for a long time. Matomo's
-`static.matomo.org/piwik.js` stopped resolving, Kissmetrics started returning 403, and
-the table mixed gzip and brotli between rows, so it compared Cabin's gzip against a
-competitor's brotli. A dated measurement goes stale honestly; a broken badge does not.

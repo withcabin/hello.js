@@ -31,7 +31,7 @@ window scrolling, an app shell, a growing feed, a short page and a scrolling sid
 `?content=` switches how the content block is exposed.
 
 The source is written with terser's compression and mangling in mind, so some of it
-looks unusual. That is deliberate: the file is downloaded on every page view.
+looks unusual.
 
 ## Measuring scroll depth
 
