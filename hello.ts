@@ -87,6 +87,7 @@ interface Cabin {
 	let bandTime: number[] // ms each band has spent on screen
 	let mode: number
 	let content: Element | null
+	let contentMode: number // how `content` was found, applied only when it is used
 	let contentTop: number // content range as of the last measurement
 	let contentHeight: number
 	let scroller: Element | null // the pane that scrolls, null for the window
@@ -231,6 +232,9 @@ interface Cabin {
 	// one call — on an app shell that stack is the content pane and its
 	// ancestors, and the pane is the first of them with somewhere to scroll.
 	const findScroller = (): void => {
+		// An SPA route change can unmount the pane under us.
+		if (scroller && !scroller.isConnected) scroller = null
+
 		if (scroller || pinned || docHeight() > viewHeight() + 4) return
 
 		const stack = document.elementsFromPoint(
@@ -239,7 +243,18 @@ interface Cabin {
 		)
 		for (let i = 0; i < stack.length; i++) {
 			const el = stack[i]
-			if (el.scrollHeight > el.clientHeight + 4 && bigEnough(el)) {
+			// Overflowing is not the same as scrolling. An `overflow: hidden`
+			// wrapper, which every app shell has several of, also reports
+			// scrollHeight above clientHeight, and adopting one would pin scrollTop
+			// at 0 and report the first screen as the whole visit — a fresh wrong
+			// number in place of the honest -1 this is meant to replace. Only the
+			// computed style can tell the two apart. Elements arrive innermost
+			// first, so the pane is found before its ancestors.
+			if (
+				el.scrollHeight > el.clientHeight + 4 &&
+				/auto|scroll/.test(getComputedStyle(el).overflowY) &&
+				bigEnough(el)
+			) {
 				scroller = el
 				return
 			}
@@ -291,17 +306,24 @@ interface Cabin {
 			// first match in document order, so an <article> above the tagged
 			// element would beat the customer's explicit choice.
 			content = document.querySelector(`[${CONTENT_ATTR}]`)
-			mode = MODE_ATTR
+			contentMode = MODE_ATTR
 			if (!content) {
 				content = document.querySelector('article, main')
-				mode = MODE_MAIN
+				contentMode = MODE_MAIN
 			}
 		}
 
+		// `mode` is set from the branch that actually supplies the range, not from
+		// the lookup. A page whose content block starts short and grows - a feed,
+		// a lazy-loaded article - takes the fallback on its first measurement and
+		// the content block later, and the element is cached across both, so
+		// setting it at the lookup left `sm` reporting the fallback for the rest
+		// of the visit and undercounting `trusted`.
 		if (content) {
 			const box = content.getBoundingClientRect()
 			top = box.top - origin + y
 			height = box.height
+			mode = contentMode
 		}
 
 		// No content element, it is hidden, or it is shorter than the viewport.
@@ -375,6 +397,7 @@ interface Cabin {
 		bandTime = new Array(BANDS).fill(0)
 		mode = MODE_NONE
 		content = null
+		contentMode = MODE_NONE
 		contentTop = 0
 		contentHeight = 1
 		// An explicit root always wins, and is re-read per pageview because an SPA

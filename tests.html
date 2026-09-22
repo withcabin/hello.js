@@ -246,6 +246,22 @@
 				return open.apply(this, arguments)
 			}
 
+			// Scroll restoration makes every scroll-depth reading meaningless: the
+			// browser jumps to the previous visit's position before the script has
+			// measured anything, so the visit records as a full read of a page
+			// nobody scrolled. Reloading this page while testing hits it every time.
+			if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
+			addEventListener('load', () => scrollTo(0, 0))
+
+			// A background tab never fires requestAnimationFrame, so the script's
+			// throttled measure never runs and only the measurement taken at send
+			// time survives. ?raf=timer swaps it for a timer, which is what lets
+			// this page be driven from automation rather than by hand.
+			if (new URLSearchParams(location.search).get('raf') === 'timer') {
+				window.requestAnimationFrame = (fn) =>
+					setTimeout(() => fn(performance.now()), 16)
+			}
+
 			// Swap how the content block is exposed, to exercise all four modes.
 			const mode = new URLSearchParams(location.search).get('content')
 			const article = document.querySelector('article')
@@ -291,29 +307,48 @@
 				document.body.appendChild(document.getElementById('result'))
 			}
 
-			// One screen of content that appends as you scroll. The old monotonic
-			// ratio banked 100% on the first frame and never came down.
+			// Less than a screen of content that appends faster than you can read
+			// it, which is what a feed does. The old monotonic ratio banked 100% on
+			// the first frame, when the article was one screen tall, and never came
+			// down however far it grew.
 			if (layout === 'feed') {
-				let n = inner.children.length
-				while (inner.children.length > 3) inner.lastElementChild.remove()
+				let n = 0
+				// At the top of the page, where a feed actually lives. Below the fold
+				// the first measurement comes out negative and clamps to 0, which
+				// hides the very thing this layout is here to show.
+				document.body.insertBefore(article, document.body.firstChild)
+				// Appending above the rest of the page makes Chrome's scroll
+				// anchoring drag the window down to keep the node below in place,
+				// which on this page means jumping thousands of pixels and recording
+				// a full read. A real feed has nothing under it, so this is an
+				// artefact of the test page, not of the layout.
+				document.documentElement.style.overflowAnchor = 'none'
+				while (inner.firstChild) inner.firstChild.remove()
+				inner.appendChild(para('Feed item ' + ++n + '.'))
 				addEventListener(
 					'scroll',
 					() => {
-						const box = inner.getBoundingClientRect()
-						if (box.bottom < innerHeight * 2 && n < 60) {
-							for (let i = 0; i < 6; i++) {
-								inner.appendChild(para('Appended paragraph ' + ++n + '.'))
-							}
+						// Stay two screens ahead of the visitor, so they never reach the
+						// end and the denominator keeps growing under them.
+						while (
+							inner.getBoundingClientRect().bottom < innerHeight * 3 &&
+							n < 400
+						) {
+							inner.appendChild(para('Feed item ' + ++n + '.'))
 						}
 					},
 					{ passive: true }
 				)
 			}
 
-			// A stub <main> under a tall footer: entirely on screen, so dividing by
-			// its own height can only ever say 100%.
+			// A stub <main> near the top of the page under a tall footer. It is
+			// entirely on screen, so dividing by its own height can only ever say
+			// 100%. The preamble above it has to go: with the article pushed below
+			// the fold the sum comes out negative instead, which is a different
+			// case and hides this one.
 			if (layout === 'short') {
 				while (inner.children.length > 1) inner.lastElementChild.remove()
+				document.body.insertBefore(article, document.body.firstChild)
 			}
 
 			// A full-height narrow pane that scrolls. It must never be adopted as

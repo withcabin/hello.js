@@ -37,10 +37,19 @@ distribution, and its absence would bias the average upwards.
 send time against the final content height, rather than a ratio maxed on the fly.
 
 The two are the same thing only while the content block keeps its height, and often it
-does not: a feed that appends on scroll, a virtualized list, a "load more" button.
+does not: a "load more" button, a virtualized list, a feed that appends on scroll.
 Under 0.6.1 the maximum was set against the smallest denominator the visit ever saw, so
-a feed holding one screen at first paint locked in 100% and stayed there however far it
-grew. Two screens of an eventual ten now report 20%.
+reaching the bottom of what existed banked 100% and nothing later could bring it down.
+
+Measured: read to the end of a 2,521px article, then press Load More and let it grow to
+7,993px. 0.6.1 reports **100%**. 0.6.2 reports **32%**, which is what the visitor
+actually saw.
+
+A note on what this does *not* fix, because it is easy to assume otherwise. A feed that
+appends during the scroll is usually safe in both versions: the growth handler runs on
+the same scroll event, before the script measures, so the short state is never sampled.
+The exposure is growth that happens *after* a measurement, which is the Load More shape
+above and the short-content case below.
 
 ### A content block shorter than the viewport no longer reports 100%
 
@@ -49,17 +58,66 @@ tall nav and a tall footer reported a glance as a complete read - and reported i
 `sm: 3`, i.e. as trusted. Content shorter than the viewport now falls through to the
 footer-trimmed document, the same path an absent or hidden content element takes.
 
+Measured: a 108px `<article>` at the top of a 1,924px document, never scrolled. 0.6.1
+reports **100%, `sm: 3`**. 0.6.2 reports **57%, `sm: 2`**, which is the viewport over
+the footer-trimmed document.
+
+The block has to be on screen for this to bite. Pushed below the fold the sum comes out
+negative and clamps to 0, which is why it survived this long without anyone noticing.
+
 Expect `trusted` counts to fall on sites that were hitting this, and their averages to
 fall with them. That is the correction landing, not a regression.
 
+### `mode` follows the range that was used, not the lookup
+
+The content element is cached across measurements but `mode` was set where the element
+was looked up, so a page that took the fallback on its first measurement and the content
+block afterwards kept reporting the fallback for the rest of the visit. `sm` described a
+measurement that was not the one being sent, and `trusted` was undercounted. It only
+shows up on a page whose content block starts short and grows, which is why it arrived
+with the change above.
+
+### `i` was always 0 on app-shell sites
+
+Not a new fix so much as a consequence of the capture listener: the interaction flag was
+set from a `window` scroll listener, so a visitor who scrolled a pane and nothing else
+was recorded as never having interacted. Those sites have been reporting near-zero
+interaction rates. Measured on the app-shell page: 0.6.1 sends `i: 0` after a 2,931px
+scroll, 0.6.2 sends `i: 1`.
+
 ### Size
 
-1,698 to 1,928 bytes gzip, 1,472 to 1,680 brotli, measured locally at maximum quality.
+1,698 to 1,979 bytes gzip, 1,472 to 1,733 brotli, measured locally at maximum quality.
 The viewport-centre pane lookup is 82 of those gzip bytes and can be dropped on its own
 if the budget matters more than the unscrolled visits it recovers.
 
 Re-measure `SCRIPT_SIZE` in the site's `shared/site.ts` from the CDN response once this
 is uploaded. It is on 1.7 KB and this build will not still be 1.7 KB.
+
+### Verified in a browser
+
+`tests.html` gains `?layout=shell|pinned|feed|short|sidebar`, each rebuilding the page
+before the script loads, and `?raf=timer` so it can be driven from automation (a
+background tab never fires `requestAnimationFrame`, so only the measurement taken at
+send time would survive). Seven scenarios were run against both builds; in every one
+0.6.2's `sd` matched the reading computed by hand from the DOM:
+
+| Scenario | 0.6.1 | 0.6.2 | Truth |
+|---|---|---|---|
+| App shell, read to 60% of the article | `-1` | 60 | 60 |
+| App shell, never scrolled | `-1` | 0 | 0 |
+| Short `<main>` at top, glanced at | 100 (`sm` 3) | 57 (`sm` 2) | 57 |
+| Read to the end, then Load More triples it | 100 | 32 | 32 |
+| Scrolling sidebar, window untouched | n/a | 0 | 0 |
+| Pinned pane, stopped halfway | n/a | 64 | 64 |
+| Ordinary article, stopped 40% in | 40 | 40 | 40 |
+
+Two of the harness layouts needed fixing before they meant anything, and both are worth
+knowing about when reading a scroll number: **scroll restoration** puts the browser back
+where it was before the script has measured, which records as a full read, and Chrome's
+**scroll anchoring** drags the window down when content is appended above other content.
+Neither is a bug in the script - it reported the position the browser had actually put
+the page in - but both make a reload-based test lie.
 
 ### No server change
 

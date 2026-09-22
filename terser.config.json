@@ -26,6 +26,6 @@
 	"format": {
 		"comments": false,
 		"ecma": 2017,
-		"preamble": "/*! withcabin.com 0.6.1 */"
+		"preamble": "/*! withcabin.com 0.6.2 */"
 	}
 }

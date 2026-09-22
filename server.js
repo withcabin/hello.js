@@ -36,9 +36,14 @@ app.get('/about', (req, res) => {
 	res.render('tests.html', { title: 'about', linkTo: '/' })
 })
 
+// Rendered, not sent as a file, so {{.Host}} is substituted the way the ingest
+// fleet's Caddy does it per request. It defaults to this server rather than
+// leaving the placeholder in, which used to make the harness beacon
+// ping.withcabin.com - i.e. every local test poked production with a pageview
+// for hostname "localhost". Override with ?host= to aim it somewhere real.
 app.get('/hello.js', (req, res) => {
 	res.setHeader('Content-Type', 'application/javascript')
-	res.sendFile(path.join(__dirname, 'dist', 'hello.js'))
+	res.render('dist/hello.js', { host: req.query.host || `localhost:${port}` })
 })
 
 app.listen(port, () => {
