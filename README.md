@@ -1,28 +1,61 @@
 # Cabin client script
 
-This is the client script for [withcabin.com](https://withcabin.com) - Privacy-first, carbon-aware web analytics.
+The tracking script for [withcabin.com](https://withcabin.com), privacy-first and
+carbon-aware web analytics. No cookies, no fingerprint, no visitor identifier.
 
-The script is accessible via CDN at https://scripts.withcabin.com/hello.js
+Served from `https://scripts.withcabin.com/hello.js`. This repository is the source
+for that file, and `dist/hello.js` here is byte-for-byte what the CDN serves, so you
+can read exactly what runs on your site.
 
-![Version number](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/Normally/cabin-script/main/package.json&label=version&query=version&color=green) ![file size in bytes](https://img.badgesize.io/normally/cabin-script/main/dist/hello.js) ![file size in bytes](https://img.badgesize.io/normally/cabin-script/main/dist/hello.js?compression=gzip) ![file size in bytes](https://img.badgesize.io/normally/cabin-script/main/dist/hello.js?compression=brotli)
+```html
+<script src="https://scripts.withcabin.com/hello.js" async defer></script>
+```
 
-`yarn dev` - run a dev server and visit localhost:8000 to test the script locally
+[![version](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/withcabin/hello.js/main/package.json&label=version&query=version&color=green)](package.json)
+![raw](https://img.badgesize.io/https://scripts.withcabin.com/hello.js?label=raw)
+![gzip](https://img.badgesize.io/https://scripts.withcabin.com/hello.js?compression=gzip&label=gzip)
+![brotli](https://img.badgesize.io/https://scripts.withcabin.com/hello.js?compression=brotli&label=brotli)
 
-`yarn min` - minify the script to `/dist` with [terser](https://github.com/terser/terser)
+See [BENCHMARKS.md](BENCHMARKS.md) for how that compares.
 
-`yarn deploy` - deploy to CDN and invalidate cache
+## Development
+
+```sh
+pnpm dev     # dev server on localhost:8000, serving tests.html
+pnpm build   # typecheck, then minify to dist/hello.js
+pnpm size    # gzipped byte count
+```
+
+`tests.html` exercises events, campaigns and scroll depth. `?layout=` switches between
+window scrolling, an app shell, a growing feed, a short page and a scrolling sidebar;
+`?content=` switches how the content block is exposed.
+
+The source is written with terser's compression and mangling in mind, so some of it
+looks unusual. That is deliberate: the file is downloaded on every page view.
 
 ## Measuring scroll depth
 
-Depth is measured against the page's content block, not the whole document, so a tall
-footer does not report a full read as 75%. The script looks for, in order:
+**What is measured.** Depth is taken against the page's content block, not the whole
+document, so a tall footer doesn't report a full read as 75%. The lookup order is:
 
-1. `[data-cabin-content]` - put this on the element wrapping your content to be explicit
-2. `<article>`, `<main>` or `[role=main]`
-3. the document, trimmed at `<footer>` if there is one
+1. `[data-cabin-content]`, if you have tagged an element
+2. the first `<article>` or `<main>`
+3. the document, trimmed at `<footer>`
 4. the whole document
 
-Which one applied is sent as `sm` on the duration payload, so a page measured against the
-whole document can be treated as less trustworthy than one that was tagged.
+Which one applied is sent as `sm`, so a page measured against the whole document can be
+treated as less trustworthy than one that was tagged. A content block shorter than the
+viewport is skipped, because a block entirely on screen can only ever divide out to 100%.
 
-Note: This script is written with a tacit knowledge of terser compression and mangle. Some of the script may look unusual but it is written to be compressed as effectively as possible to reduce file size.
+**What scrolls.** Most sites scroll the window. App layouts often scroll a panel
+instead, and those are followed automatically: the first element to scroll that covers
+at least half the viewport in both directions is used, which keeps sidebars and menus
+out of it. If nothing has scrolled and the window can't, the panel is found from the
+element stack at the centre of the viewport. Override it with `[data-cabin-scroll-root]`
+when the guess can't work. `data-cabin-content` says what to measure, this says what
+moves; most sites need neither.
+
+**On pages that grow.** Feeds and "load more" pages change the total while the visitor
+reads, so the percentage falls when new content arrives and climbs back as they read it.
+It stays a true reading of how far they got through what had loaded, but count an event
+on the button if you want to know how deep people went.

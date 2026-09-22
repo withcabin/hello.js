@@ -72,7 +72,7 @@ interface Cabin {
 	const MODE_NONE = 0 // nothing scrollable, depth not measured
 	const MODE_DOC = 1 // whole document, footer included
 	const MODE_FOOT = 2 // document trimmed at the footer
-	const MODE_MAIN = 3 // <article>, <main> or [role=main]
+	const MODE_MAIN = 3 // the first <article> or <main>
 	const MODE_ATTR = 4 // element carrying data-cabin-content
 
 	// Use custom domain if provided, otherwise default
