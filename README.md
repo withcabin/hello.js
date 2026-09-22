@@ -52,8 +52,18 @@ instead, and those are followed automatically: the first element to scroll that 
 at least half the viewport in both directions is used, which keeps sidebars and menus
 out of it. If nothing has scrolled and the window can't, the panel is found from the
 element stack at the centre of the viewport. Override it with `[data-cabin-scroll-root]`
-when the guess can't work. `data-cabin-content` says what to measure, this says what
-moves; most sites need neither.
+when the guess can't work.
+
+The two attributes answer different questions and are independent: the scroll root is
+where the scrollbar is, the content block is the part inside it that counts. Most sites
+need neither.
+
+```html
+<div data-cabin-scroll-root>
+	<article data-cabin-content>...</article>
+	<footer>tall, shouldn't count</footer>
+</div>
+```
 
 **On pages that grow.** Feeds and "load more" pages change the total while the visitor
 reads, so the percentage falls when new content arrives and climbs back as they read it.
