@@ -141,6 +141,23 @@
 			<a href="?content=attr">data-cabin-content</a> &middot;
 			<a href="?content=doc">whole document</a>
 		</p>
+		<p>
+			Layout:
+			<a href="?">window scroll (default)</a> &middot;
+			<a href="?layout=shell">app shell (inner pane)</a> &middot;
+			<a href="?layout=pinned">app shell + data-cabin-scroll-root</a> &middot;
+			<a href="?layout=feed">growing feed</a> &middot;
+			<a href="?layout=short">short main, tall footer</a> &middot;
+			<a href="?layout=sidebar">scrolling sidebar (must be ignored)</a>
+		</p>
+		<p>
+			<b>What to expect.</b> <i>app shell</i> and <i>pinned</i>: depth tracks
+			the pane, not <code>-1</code>. <i>feed</i>: reading two screens of an
+			eventual ten reports about 20%, never 100%. <i>short</i>: a glance
+			reports a fraction of the footer-trimmed document (mode 2), not a
+			trusted 100%. <i>sidebar</i>: scrolling the sidebar alone leaves depth
+			where the window put it.
+		</p>
 		<article>
 			<h3>A long enough page to actually scroll</h3>
 			<div id="inner">
@@ -244,6 +261,70 @@
 						innerHTML: '<p>Footer removed in this mode.</p>',
 					})
 				)
+			}
+
+			// Layouts that used to defeat scroll depth entirely. Each one rebuilds
+			// the page before the script loads, so the script sees a real layout
+			// rather than one that changes under it.
+			const layout = new URLSearchParams(location.search).get('layout')
+			const inner = document.getElementById('inner')
+			const para = (text) =>
+				Object.assign(document.createElement('p'), { textContent: text })
+
+			// Fixed header, fixed sidebar, one overflow-y pane holding everything
+			// else. The window never scrolls, which is what made every visit to a
+			// site built this way report as unmeasurable.
+			if (layout === 'shell' || layout === 'pinned') {
+				const pane = document.createElement('div')
+				pane.style.cssText =
+					'position:fixed;top:60px;left:0;right:0;bottom:0;overflow-y:auto;padding:0 30px'
+				if (layout === 'pinned') pane.setAttribute('data-cabin-scroll-root', '')
+				const bar = document.createElement('div')
+				bar.style.cssText =
+					'position:fixed;top:0;left:0;right:0;height:60px;background:#111;color:#fff;padding:20px 30px'
+				bar.textContent = 'App shell header (the window cannot scroll)'
+				while (document.body.firstChild) {
+					pane.appendChild(document.body.firstChild)
+				}
+				document.body.append(bar, pane)
+				document.body.style.cssText = 'overflow:hidden;height:100vh;margin:0;padding:0'
+				document.body.appendChild(document.getElementById('result'))
+			}
+
+			// One screen of content that appends as you scroll. The old monotonic
+			// ratio banked 100% on the first frame and never came down.
+			if (layout === 'feed') {
+				let n = inner.children.length
+				while (inner.children.length > 3) inner.lastElementChild.remove()
+				addEventListener(
+					'scroll',
+					() => {
+						const box = inner.getBoundingClientRect()
+						if (box.bottom < innerHeight * 2 && n < 60) {
+							for (let i = 0; i < 6; i++) {
+								inner.appendChild(para('Appended paragraph ' + ++n + '.'))
+							}
+						}
+					},
+					{ passive: true }
+				)
+			}
+
+			// A stub <main> under a tall footer: entirely on screen, so dividing by
+			// its own height can only ever say 100%.
+			if (layout === 'short') {
+				while (inner.children.length > 1) inner.lastElementChild.remove()
+			}
+
+			// A full-height narrow pane that scrolls. It must never be adopted as
+			// the page's scroller, or read depth is measured against a menu.
+			if (layout === 'sidebar') {
+				const side = document.createElement('div')
+				side.style.cssText =
+					'position:fixed;top:0;left:0;bottom:0;width:180px;overflow-y:auto;background:#f4f4f4;padding:10px'
+				for (let i = 1; i <= 60; i++) side.appendChild(para('Nav item ' + i))
+				document.body.appendChild(side)
+				document.body.style.paddingLeft = '220px'
 			}
 		</script>
 

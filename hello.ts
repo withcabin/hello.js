@@ -3,7 +3,7 @@
 /**
  * Cabin Analytics Script
  * withcabin.com
- * @version 0.6.1
+ * @version 0.6.2
  */
 
 interface CabinData {
@@ -62,6 +62,7 @@ interface Cabin {
 	const STORAGE_KEY = 'cabin_blocked'
 	const DATA_EVENT_ATTR = 'data-cabin-event'
 	const CONTENT_ATTR = 'data-cabin-content'
+	const SCROLL_ATTR = 'data-cabin-scroll-root'
 
 	const BANDS = 10 // the content block is split into deciles
 	const BAND_MS = 1000 // time a band must be on screen before it counts as read
@@ -82,10 +83,14 @@ interface Cabin {
 	let snapshot: number
 	let duration: number
 
-	let maxDepth: number // deepest point reached this pageview, 0-1
+	let maxBottom: number // deepest pixel reached, in the scroller's coordinates
 	let bandTime: number[] // ms each band has spent on screen
 	let mode: number
 	let content: Element | null
+	let contentTop: number // content range as of the last measurement
+	let contentHeight: number
+	let scroller: Element | null // the pane that scrolls, null for the window
+	let pinned: boolean // scroller came from the attribute, so never guess over it
 	let lastSample: number
 	let bandFrom: number
 	let bandTo: number
@@ -188,11 +193,58 @@ interface Cabin {
 		duration += now() - snapshot
 	}
 
+	// Everything below reads its geometry through these four, so the same code
+	// measures a window-scrolled page and an app-shell pane. `scroller` is null
+	// for the window, which is still the common case.
+	//
 	// scrollingElement is <body> in quirks mode and <html> everywhere else,
 	// which is the only difference the old four-way Math.max was papering over,
 	// and it cannot be null the way document.body can be mid-parse.
 	const docHeight = (): number =>
-		(document.scrollingElement || document.documentElement).scrollHeight
+		(scroller || document.scrollingElement || document.documentElement)
+			.scrollHeight
+
+	const viewHeight = (): number =>
+		scroller ? scroller.clientHeight : window.innerHeight
+
+	const scrollTop = (): number => (scroller ? scroller.scrollTop : window.scrollY)
+
+	// getBoundingClientRect is viewport-relative, but depth is measured in the
+	// scroller's own coordinates, so a pane that starts below a fixed header has
+	// to have that offset taken back off.
+	const originTop = (): number =>
+		scroller ? scroller.getBoundingClientRect().top : 0
+
+	// A pane counts as the page's scroller only if it covers most of the viewport
+	// in both directions. Sidebars, comboboxes, code blocks and date pickers all
+	// scroll, and adopting one of those would measure read depth against a menu.
+	const bigEnough = (el: Element): boolean =>
+		el.clientHeight * 2 >= window.innerHeight &&
+		el.clientWidth * 2 >= window.innerWidth
+
+	// The window has nowhere to scroll and nothing has scrolled yet, so nothing
+	// has told us which pane holds the page. Without this, an app shell only ever
+	// measured visitors who scrolled: everyone who read the first screen and left
+	// reported unmeasurable, which is precisely the shallow end of the
+	// distribution, and the average would have been biased upwards by its
+	// absence. Asking what sits under the middle of the viewport answers it in
+	// one call — on an app shell that stack is the content pane and its
+	// ancestors, and the pane is the first of them with somewhere to scroll.
+	const findScroller = (): void => {
+		if (scroller || pinned || docHeight() > viewHeight() + 4) return
+
+		const stack = document.elementsFromPoint(
+			window.innerWidth / 2,
+			window.innerHeight / 2
+		)
+		for (let i = 0; i < stack.length; i++) {
+			const el = stack[i]
+			if (el.scrollHeight > el.clientHeight + 4 && bigEnough(el)) {
+				scroller = el
+				return
+			}
+		}
+	}
 
 	// Dwell is credited to the range that was on screen since the last
 	// measurement, and only then is the range recomputed. That is exact without
@@ -205,6 +257,15 @@ interface Cabin {
 	// is the opposite: a band re-entered collects more time and is more likely to
 	// qualify as read. Together they separate a reader from someone who flicked
 	// to the bottom, which neither number does on its own.
+	//
+	// What rises is the deepest PIXEL reached, not the deepest percentage. Those
+	// are the same thing only while the content block keeps its height, and it
+	// often does not: a feed that appends on scroll, a virtualized list, a
+	// "load more" button. Banking the ratio meant the maximum was set against
+	// whatever the smallest denominator of the visit had been, so a feed holding
+	// one screen at first paint locked in 100% and stayed there however far it
+	// grew. Keeping the pixel and dividing once, at send time, against the final
+	// height, reports two screens out of an eventual ten as 20%.
 	const measure = (): void => {
 		const t = now()
 		for (let i = bandFrom; i < bandTo; i++) {
@@ -212,7 +273,11 @@ interface Cabin {
 		}
 		lastSample = t
 
-		const y = window.scrollY
+		findScroller()
+
+		const y = scrollTop()
+		const vh = viewHeight()
+		const origin = originTop()
 		let top = 0
 		let height = 0
 
@@ -235,15 +300,20 @@ interface Cabin {
 
 		if (content) {
 			const box = content.getBoundingClientRect()
-			top = box.top + y
+			top = box.top - origin + y
 			height = box.height
 		}
 
-		// No content element, or it is hidden. Trim at the footer if there is one,
-		// which recovers most of the accuracy for a single extra query.
-		if (!height) {
+		// No content element, it is hidden, or it is shorter than the viewport.
+		// That last one is the one that used to lie: a block entirely on screen
+		// can only ever divide out to 100%, so a stub <main> under a tall nav and
+		// a tall footer reported a glance as a complete read, and reported it as
+		// trusted. Trim at the footer instead, which recovers most of the accuracy
+		// for a single extra query, and fall back to the whole document.
+		if (height <= vh) {
 			const foot = document.querySelector('footer')
-			const cut = foot ? foot.getBoundingClientRect().top + y : 0
+			const cut = foot ? foot.getBoundingClientRect().top - origin + y : 0
+			top = 0
 			height = docHeight()
 			mode = MODE_DOC
 			if (cut > 0 && cut < height) {
@@ -254,9 +324,12 @@ interface Cabin {
 
 		// iOS Safari collapses its toolbar as you scroll, which makes innerHeight
 		// grow mid-scroll and can push this past 1.
-		const end = Math.min(1, (y + window.innerHeight - top) / height)
-		if (end > maxDepth) maxDepth = end
+		const bottom = y + vh
+		if (bottom > maxBottom) maxBottom = bottom
+		contentTop = top
+		contentHeight = height
 
+		const end = Math.min(1, (bottom - top) / height)
 		bandFrom = Math.max(0, Math.floor(((y - top) / height) * BANDS))
 		bandTo = Math.ceil(end * BANDS)
 	}
@@ -269,13 +342,17 @@ interface Cabin {
 			if (bandTime[i] >= BAND_MS) bits |= 1 << i
 		}
 
-		// Nothing could scroll: a page shorter than the viewport, or a site that
-		// scrolls an inner element rather than the window. Report that as
-		// unmeasured rather than as a perfect read.
-		const measured = docHeight() > window.innerHeight + 4
+		// Nothing could scroll: a page shorter than the viewport. An app-shell
+		// pane answers this for itself now rather than reporting the window's
+		// static viewport, so the whole layout is no longer unmeasurable.
+		const measured = docHeight() > viewHeight() + 4
+		const depth = Math.min(
+			1,
+			Math.max(0, (maxBottom - contentTop) / contentHeight)
+		)
 
 		return {
-			sd: measured ? Math.round(maxDepth * 100) : -1,
+			sd: measured ? Math.round(depth * 100) : -1,
 			sb: measured ? bits : 0,
 			sm: measured ? mode : MODE_NONE,
 			i: interacted ? 1 : 0,
@@ -294,10 +371,17 @@ interface Cabin {
 		snapshot = startTime
 		duration = 0
 
-		maxDepth = 0
+		maxBottom = 0
 		bandTime = new Array(BANDS).fill(0)
 		mode = MODE_NONE
 		content = null
+		contentTop = 0
+		contentHeight = 1
+		// An explicit root always wins, and is re-read per pageview because an SPA
+		// route change can swap the pane. Everything else waits for the first
+		// scroll to say which element moved.
+		scroller = document.querySelector(`[${SCROLL_ATTR}]`)
+		pinned = !!scroller
 		lastSample = startTime
 		bandFrom = 0
 		bandTo = 0
@@ -377,10 +461,24 @@ interface Cabin {
 		}
 	})
 
-	window.addEventListener(
+	// Scroll events do not bubble, but they do reach a capture-phase listener on
+	// document, so this one listener sees a window scroll and a scroll inside any
+	// pane alike. That matters because the app-shell layout — fixed header, fixed
+	// sidebar, one overflow-y content div — is what Nuxt UI, shadcn, Tailwind UI,
+	// Radix and Mantine all hand you by default. Those sites never move window
+	// scroll position, so every visit to them used to report as unmeasurable.
+	document.addEventListener(
 		'scroll',
-		() => {
+		(e: Event) => {
 			interacted = true
+
+			// The window's own scroll targets the document, which has no
+			// clientHeight, so it falls out of bigEnough and leaves the current
+			// choice alone.
+			const el = e.target as Element
+			if (!pinned && el !== document.scrollingElement && bigEnough(el)) {
+				scroller = el
+			}
 
 			// One measurement per frame at most: any more would be reading
 			// layout faster than the browser can paint it.
@@ -392,7 +490,7 @@ interface Cabin {
 				})
 			}
 		},
-		{ passive: true }
+		{ capture: true, passive: true }
 	)
 
 	window.addEventListener('keydown', () => (interacted = true), {

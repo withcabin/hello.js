@@ -1,3 +1,75 @@
+## Key Changes in v0.6.2: scroll depth on app-shell layouts
+
+0.6.1 measured scroll depth against the window. Two whole classes of site got nothing
+useful out of that, and one of them got a confidently wrong number.
+
+### The window is no longer assumed to be what scrolls
+
+Scroll events do not bubble, but they do reach a capture-phase listener on `document`,
+so one listener now sees a window scroll and a scroll inside any pane alike. The first
+pane to scroll becomes the page's scroller, and every measurement reads its
+`scrollTop`, `clientHeight`, `scrollHeight` and offset instead of the window's.
+
+This matters because the app-shell layout - fixed header, fixed sidebar, one
+`overflow-y: auto` content div - is what Nuxt UI, shadcn, Tailwind UI, Radix and
+Mantine hand you by default. Those sites never move window scroll position, so under
+0.6.1 every visit to one reported `sd: -1`.
+
+A pane is only adopted if it covers at least half the viewport in both directions.
+Sidebars, comboboxes, code blocks and date pickers scroll too, and adopting one of
+those would measure read depth against a menu.
+
+If nothing has scrolled and the window has nowhere to scroll, the pane is found from
+the element stack under the middle of the viewport. Without that step an app shell
+would only ever measure visitors who scrolled, which is exactly the shallow end of the
+distribution, and its absence would bias the average upwards.
+
+### New public attribute
+
+- **`data-cabin-scroll-root`** - put it on the element that scrolls and it is used
+  directly, no guessing. Re-read on every pageview so an SPA route change can swap it.
+  Pairs with `data-cabin-content`, which still says what to measure; this one says what
+  moves.
+
+### Depth is banked as a pixel, not a percentage
+
+`sd` still only rises. What rises is now the deepest pixel reached, divided once at
+send time against the final content height, rather than a ratio maxed on the fly.
+
+The two are the same thing only while the content block keeps its height, and often it
+does not: a feed that appends on scroll, a virtualized list, a "load more" button.
+Under 0.6.1 the maximum was set against the smallest denominator the visit ever saw, so
+a feed holding one screen at first paint locked in 100% and stayed there however far it
+grew. Two screens of an eventual ten now report 20%.
+
+### A content block shorter than the viewport no longer reports 100%
+
+A block entirely on screen can only ever divide out to 100%, so a stub `<main>` under a
+tall nav and a tall footer reported a glance as a complete read - and reported it with
+`sm: 3`, i.e. as trusted. Content shorter than the viewport now falls through to the
+footer-trimmed document, the same path an absent or hidden content element takes.
+
+Expect `trusted` counts to fall on sites that were hitting this, and their averages to
+fall with them. That is the correction landing, not a regression.
+
+### Size
+
+1,698 to 1,928 bytes gzip, 1,472 to 1,680 brotli, measured locally at maximum quality.
+The viewport-centre pane lookup is 82 of those gzip bytes and can be dropped on its own
+if the budget matters more than the unscrolled visits it recovers.
+
+Re-measure `SCRIPT_SIZE` in the site's `shared/site.ts` from the CDN response once this
+is uploaded. It is on 1.7 KB and this build will not still be 1.7 KB.
+
+### No server change
+
+The payload shape is unchanged: the same four fields, the same ranges, the same five
+`sm` modes. Ingest clamps `sm` to 0-4, so a new mode for "measured inside a pane" would
+have been silently rewritten to 4 and counted as trusted. Adding one is a two-sided
+change and is deliberately not in this release.
+
+---
+
 ## Key Changes in v0.6.1: scroll depth
 
 0.6.0 never reached the CDN, so this supersedes it and ships both sets of changes at once.
